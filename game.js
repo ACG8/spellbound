@@ -20,50 +20,27 @@ function Actor(imagesrc,x,y) {
 	this.y=y;
 	this.draw = function() {ctx.drawImage(this.image,this.x,this.y)};
 	this.isTouching = function(other) {
-		var
-
-		tW=this.image.width,
-		tH=this.image.height,
-		tX=this.x,
-		tY=this.y,
-		
-		tL=tX,
-		tR=tX+tW,
-		tU=tY,
-		tD=tY+tH,
-		
-		tHor=[tL,tR],tVer=[tU,tD],
-
-		T = {x:this.x,w:this.image.width,y:this.y,h:this.image.height},
-
-		oW=other.image.width,
-		oH=other.image.height,
-		oX=other.x,
-		oY=other.y,
-		
-		oL=oX,
-		oR=oX+oW,
-		oU=oY,
-		oD=oY+oH,
-
-		oHor=[oL,oR],oVer=[oU,oD],
-
-		O = {x:other.x,w:other.image.width,y:other.y,h:other.image.height}
-		; 
-		var i=0,j=0;
-		for (i;i<2;i++) {//x loop
-			for (j;j<2;j++) {//y loop
-				if ((isInside(tHor[i],tVer[j]),O) || (isInside(oHor[i],oVer[j],T))) {return true;}
-			}
-		}
-		return false;
+		var T = [this.x,this.y,this.image.width,this.image.height],O = [other.x,other.y,other.image.width,other.image.height];
+		return (!notTouching(T,O));
+	};
+	this.isOffscreen = function() {
+		var L=this.x,R=L+this.image.width,U=this.y,D=U+this.image.height;
+		return (L<0 || canvas.width<R || U<0 || canvas.height<D);
 	};
 }
 
-function isInside(x,y,rect) {
-	var L=rect.x,R=L+rect.w,U=rect.y,D=U+rect.H;
-	return (L<x && x<R && U<y && y<D)
-};
+function notTouching(rect1,rect2) {//rect1,2 as arrays, format [x,y,w,h]
+	var 
+	L1=rect1[0],
+	R1=L1+rect1[2],
+	U1=rect1[1],
+	D1=U1+rect1[3]
+	L2=rect2[0],
+	R2=L2+rect2[2],
+	U2=rect2[1],
+	D2=U2+rect2[3];
+	return (L1>R2 || L2>R1 || U1>D2 || U2>D1);
+}
 
 function Creature(level,health,speed,imagesrc,x,y) {
 	Actor.call(this,imagesrc);
@@ -74,18 +51,42 @@ function Creature(level,health,speed,imagesrc,x,y) {
 
 function Wizard(level,health,speed,imagesrc,x,y) {
 	Creature.call(this,level,health,speed,imagesrc,x,y);
+	this.words = new Words();
+}
+
+function Words() {
+	this.history = [];
+	this.getLast = function(n) {
+		var history = this.history, L=history.length, returnList = [];
+		if (n>history.length) {return undefined}
+		for (n;n>0;n--) {returnList.push(history[L-n])}
+		return returnList.join("");
+	};
+	this.findSpell = function() {
+		var key,spell,spelling,matchList=[],result="";
+		for (key in spellbook) {
+			spell = spellbook[key];
+			spelling = spell.spell;
+			if (spelling === this.getLast(spelling.length)) {matchList.push(spell);}
+		}
+		var L=matchList.length,i=0;
+		for (i;i<L;i++) {if (matchList[i]["spell"].length>result.length) {result=matchList[i];}}
+		return result;
+	};
+	this.remember = function(c) {this.history.push(c)};
 }
 
 function Projectile(heading,rate,damage,imagesrc,x,y) { //Images should be from P1's perspective
 	Actor.call(this,imagesrc,x,y);
 	this.heading = heading;//-1 for left, 1 for right
 	this.rate = rate;
+	this.damage = damage;
 
 	//if (this.heading===-1) {ctx.scale(scaleH, scaleV)}
 }
 
 function Fireball(heading,x,y) {
-	Projectile.call(this,heading,5,5,"fireball",x,y);
+	Projectile.call(this,heading,256,5,"fireball",x,y);
 }
 //Load player images
 /*
@@ -106,6 +107,7 @@ var P2 = new Wizard(7,20,4,"wizardLeft",startX2,startY);
 
 var creatures = [P1,P2];
 var projectiles = [];
+
 /*
 // Hero image
 var heroReady = false;
@@ -157,9 +159,9 @@ var reset = function () {
 
 // Update game objects
 var update = function (modifier) {
-	//console.log(keysDown);
-	if (32 in keysDown) {//spacebar
-		var fireball = new Fireball(1,P1.x,P1.y)
+	//console.log(keysDown,projectiles);
+	if (32 in keysDown && projectiles.length===0) {//spacebar
+		var fireball = new Fireball(1,P1.x,P1.y);
 		projectiles.push(fireball);
 	}
 	/*
@@ -176,16 +178,19 @@ var update = function (modifier) {
 		hero.x += hero.speed * modifier;
 	}
 	*/
+	
 	var i=0,L=projectiles.length,proj,removeIndices=[];
 	for (i=0;i<L;i++) {
-		proj = projectiles[i]; 
-		proj.x+=proj.rate;
-		if (proj.isTouching(P2)) {removeIndices.push(i)}
+		proj = projectiles[i];
+		proj.x+=proj.rate*modifier;
+		if (proj.isTouching(P2)) {P2.health-=proj.damage;removeIndices.push(i);}
+		else if (proj.isOffscreen()) {removeIndices.push(i);}
 	}
 	while (removeIndices.length>0) {
 		projectiles.splice(removeIndices[0],1);
 		removeIndices.shift();
 	}
+
 	// Are they touching?
 	/*
 	if (
@@ -205,11 +210,11 @@ var render = function () {
 	//Draw background
 	if (bgReady) {ctx.drawImage(bgImage, 0, 0);}
 	//Draw creatures
-	var i=0,L=creatures.length,arr=creatures;
+	var i=0,L=creatures.length;
 	for (i;i<L;i++) {creatures[i].draw();}
 	//Draw projectiles
-	L=projectiles.length,arr=projectiles;
-	for (i;i<L;i++) {projectiles[i].draw();}
+	L=projectiles.length;
+	for (i=0;i<L;i++) {projectiles[i].draw();}
 
 	// Score
 	
@@ -238,6 +243,17 @@ var main = function () {
 	// Request to do this again ASAP
 	requestAnimationFrame(main);
 };
+
+var spellbook = {
+	fireball: {
+		spell:"aabc",
+		onCast: function() {
+			var proj = new Fireball(1,P1.x,P1.y);
+			projectiles.push(proj);
+			render();
+		}
+	}
+}
 
 // Cross-browser support for requestAnimationFrame
 var w = window;
