@@ -44,21 +44,21 @@ loadImages();
 var roundTime = 5000, //Time of each round in ms
 
 	keybindings = { //Control bindings for players 1 and 2
-	P1: {
-		a: 87, //w
-		b: 69, //e
-		c: 65, //a
-		d: 83, //s
-		e: 68  //d
-	},
-	P2: {
-		a: 79, //o
-		b: 80, //p
-		c: 76, //l
-		d: 186,//;
-		e: 222 //'
-	}
-};
+		P1: {
+			a: 87, //w
+			b: 69, //e
+			c: 65, //a
+			d: 83, //s
+			e: 68  //d
+		},
+		P2: {
+			a: 79, //o
+			b: 80, //p
+			c: 76, //l
+			d: 186,//;
+			e: 222 //'
+		}
+	};
 
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////Constructor Functions///////////////////////////
@@ -87,11 +87,8 @@ function Actor(imagesrc,x,y) {
 		return (L<0 || canvas.width<R || U<0 || canvas.height<D);
 	};
 	this.getTouching = function() {
-		var combinedObjects = creatures + conjurations, L = combinedObjects.length, i=0, result=[];
-		for (i;i<L;i++) {
-			if (this.isTouching(combinedObjects[i])) {result.push(combinedObjects[i]);}
-		}
-		return result;
+		var combinedObjects = creatures + conjurations;
+		return combinedObjects.filter(function(o) {return (this.isTouching(o) && (o!==this))})
 	};
 	this.isCondemned = false;
 }
@@ -124,9 +121,8 @@ function Words() {
 			spelling = spell.spell;
 			if (spelling === this.getLast(spelling.length)) {matchList.push(spell);}
 		}
-		var L=matchList.length,i=0;
-		for (i;i<L;i++) {if (matchList[i]["spell"].length>result.length) {result=matchList[i];}}
-		return result;
+		return matchList.reduce(function(prev,curr) {return ((curr.spell.length > prev.spell.length) ? curr : prev)},spellbook["null"]);
+		//for (i;i<L;i++) {if (matchList[i]["spell"].length>result.length) {result=matchList[i];}}
 	};
 	this.remember = function(c) {
 		this.history.push(c);
@@ -171,15 +167,19 @@ function Shield(caster) {
 /////////////////////////////////////////////////////////////////////////
 
 var spellbook = {
+	"null": {
+		spell:"",
+		onCast: function(caster) {}
+	},
 	fireball: {
-		spell:"a",//aabc; will use simple 1 character for testing
+		spell:"abc",//aabc; will use simple 1 character for testing
 		onCast: function(caster) {
 			var conj = new Fireball(caster);
 			conjurations.push(conj);
 		}
 	},
 	shield: {
-		spell:"b",//aabc; will use simple 1 character for testing
+		spell:"c",
 		onCast: function(caster) {
 			var conj = new Shield(caster);
 			conjurations.push(conj);
@@ -224,6 +224,7 @@ addEventListener("keyup", function (e) {
 // Update game objects
 var update = function (modifier) {
 	//console.log(keysDown);
+	//Log key commands
 	var P,key,controls;
 	for (P in keybindings) {
 		controls = keybindings[P]
@@ -232,19 +233,20 @@ var update = function (modifier) {
 		}
 	}
 
-	var i=0,L=conjurations.length,proj,removeIndices=[];
-	for (i;i<L;i++) {
-		proj = conjurations[i];
-		var enemy = ((proj.caster===P1) ? P2 : P1);
-		proj.x+=proj.rate*proj.heading*modifier;
-		if (proj.isTouching(enemy)) {
-			if (!enemy.isShielded) {enemy.health-=proj.damage}
-			if (proj.onDestroy) {proj.onDestroy();}
-			proj.isCondemned = true;
+	var enemy;
+	conjurations.forEach(function(o,i) {
+		enemy = ((o.caster===P1) ? P2 : P1);
+		o.x += o.rate * o.heading * modifier;
+		if (o.isTouching(enemy)) {
+			if (!enemy.isShielded) {enemy.health -= o.damage}
+			if (o.onDestroy) {o.onDestroy();}
+			o.isCondemned = true;
 		}
-		else if (proj.isOffscreen()) {proj.isCondemned=true;if (proj.onDestroy) {proj.onDestroy();}}
-	}
+		else if (o.isOffscreen()) {o.isCondemned=true; if (o.onDestroy) {o.onDestroy();}}
+	})
+	
 	conjurations = conjurations.filter(function(x) {return (!x.isCondemned)})
+	creatures = creatures.filter(function(x) {return (!x.isCondemned)})
 };
 
 // Reset the game
@@ -268,8 +270,7 @@ var render = function () {
 	L=conjurations.length;
 	for (i=0;i<L;i++) {conjurations[i].draw();}
 
-	// Score
-	
+	// Life
 	ctx.fillStyle = "rgb(250, 250, 250)";
 	ctx.font = "24px Helvetica";
 	ctx.fillStyle = "green";
@@ -281,12 +282,9 @@ var render = function () {
 	ctx.fillText("Life: " + P2.health, 600-32, 400-32);
 
 	// Time
-	ctx.fillStyle = "rgb(250, 250, 250)";
-	ctx.font = "24px Helvetica";
-	ctx.textBaseline = "top";
 	ctx.fillStyle = "black";
 	ctx.textAlign = "center";
-	var text = (parseInt((nextResolve-Date.now())/1000)+1).toString()
+	var text = (parseInt((nextResolve-Date.now())/1000)+1).toString();
 	ctx.fillText(text,300,200);
 };
 
@@ -297,21 +295,17 @@ var resolve = function() {
 	P2W.remember(orders.P2);
 	orders.P1 = "";
 	orders.P2 = "";
+
 	//Upkeep for existing spells
-	var i=0, combined = creatures + conjurations, L = combined.length;
-	conjurations.forEach(function(x,i,arr) {
+	conjurations.forEach(function(x) {
 		if (x.onUpkeep) {x.onUpkeep()}
 	});
-	for (i;i<L;i++) {
-		console.log(combined[i].tag);
-		if (combined[i].onUpkeep) {combined[i].onUpkeep();}
-	}
 
 	var P1S = P1W.findSpell(),P2S = P2W.findSpell();
 	if (P1S) {P1S.onCast(P1)}
 	if (P2S) {P2S.onCast(P2)}
-	//console.log(P1.words.history);
-	//console.log(P2.words.history);
+	console.log(P1.words.history);
+	console.log(P2.words.history);
 }
 
 // The main game loop
