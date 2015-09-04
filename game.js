@@ -14,6 +14,30 @@ bgImage.onload = function () {
 bgImage.src = "images/background.png";
 
 /////////////////////////////////////////////////////////////////////////
+///////////////////////////Preloading Images/////////////////////////////
+/////////////////////////////////////////////////////////////////////////
+/*
+var imageDict = {};
+
+function loadImages() {
+	var imageList = [
+		"player1",
+		"player2",
+		"fireball",
+		"shield"
+	],
+	i=0,L=imageList.length,image,doneLoading = false;
+	for (i;i<L;i++) {
+		image = imageList[i]
+		imageDict[image] = new Image();
+		imageDict[image].src = "images/"+image+".png";
+		if (i===L-1) {imageDict[image].onload = function() {doneLoading = true;};}
+	}
+}
+
+loadImages();
+*/
+/////////////////////////////////////////////////////////////////////////
 /////////////////////////////Game Settings///////////////////////////////
 /////////////////////////////////////////////////////////////////////////
 
@@ -43,8 +67,9 @@ var roundTime = 5000, //Time of each round in ms
 function Actor(imagesrc,x,y) {
 	this.image = new Image();
 	this.image.src = "images/"+imagesrc+".png";
-	this.x=x;
-	this.y=y;
+	//this.image = imageDict[imagesrc];
+	this.x = x;
+	this.y = y;
 	this.draw = function() {ctx.drawImage(this.image,this.x,this.y)};
 	this.isTouching = function(other) {
 		var L1=this.x,
@@ -61,6 +86,14 @@ function Actor(imagesrc,x,y) {
 		var L=this.x,R=L+this.image.width,U=this.y,D=U+this.image.height;
 		return (L<0 || canvas.width<R || U<0 || canvas.height<D);
 	};
+	this.getTouching = function() {
+		var combinedObjects = creatures + conjurations, L = combinedObjects.length, i=0, result=[];
+		for (i;i<L;i++) {
+			if (this.isTouching(combinedObjects[i])) {result.push(combinedObjects[i]);}
+		}
+		return result;
+	};
+	this.isCondemned = false;
 }
 
 function Creature(level,health,speed,controller,imagesrc,x,y) {
@@ -101,18 +134,37 @@ function Words() {
 	};
 }
 
-function Projectile(caster,rate,damage,imagesrc) { //Images should be from P1's perspective
+function Conjuration(caster,rate,duration,damage,imagesrc) { //Images should be from P1's perspective
 	Actor.call(this,imagesrc,caster.x,caster.y);
 	this.heading = (caster.controller===P1) ? 1 : -1;//heading;//-1 for left, 1 for right
 	this.rate = rate;
 	this.damage = damage;
 	this.caster = caster;
+	this.duration = duration;
+	this.onUpkeep = function() {
+		console.log(this.duration)
+		this.duration -= 1;
+		if (this.duration === 0) {
+			this.isCondemned = true;
+			if (this.onDestroy) {this.onDestroy();}
+			return;}
+		if (this.upkeep) {this.upkeep();} 
+	};
 
 	//if (this.heading===-1) {ctx.scale(scaleH, scaleV)}
 }
 
 function Fireball(caster) {
-	Projectile.call(this,caster,256,5,"fireball");
+	Conjuration.call(this,caster,256,1,5,"fireball");
+	this.tag = "fireball"
+}
+
+function Shield(caster) {
+	Conjuration.call(this,caster,0,1,0,"shield")
+	this.tag = "shield"
+	this.x -= 30;this.y -= 30;  //need to find a better solution than hardcoding. Problem is I can't refer to the width because the image is not loaded yet.
+	caster.isShielded = true;
+	this.onDestroy = function() {caster.isShielded = false};
 }
 /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////Spells//////////////////////////////////
@@ -122,8 +174,15 @@ var spellbook = {
 	fireball: {
 		spell:"a",//aabc; will use simple 1 character for testing
 		onCast: function(caster) {
-			var proj = new Fireball(caster);
-			projectiles.push(proj);
+			var conj = new Fireball(caster);
+			conjurations.push(conj);
+		}
+	},
+	shield: {
+		spell:"b",//aabc; will use simple 1 character for testing
+		onCast: function(caster) {
+			var conj = new Shield(caster);
+			conjurations.push(conj);
 		}
 	}
 }
@@ -135,10 +194,14 @@ var spellbook = {
 var startX1 = canvas.width / 10,
 	startX2 = canvas.width * 8 / 10,
 	startY = canvas.height / 2,
-	P1 = new Wizard(7,20,4,"wizardRight",startX1,startY),
-	P2 = new Wizard(7,20,4,"wizardLeft",startX2,startY),
+
+	P1 = new Wizard(7,20,4,"player1",startX1,startY),
+	P2 = new Wizard(7,20,4,"player2",startX2,startY),
+
 	creatures = [P1,P2],
-	projectiles = [],
+	conjurations = [],
+	removeConjurations = [],
+	removeCreatures = [],
 	keysDown = {},
 	orders = {P1:"",P2:""};
 
@@ -169,19 +232,20 @@ var update = function (modifier) {
 		}
 	}
 
-	var i=0,L=projectiles.length,proj,removeIndices=[];
+	var i=0,L=conjurations.length,proj,removeIndices=[];
 	for (i;i<L;i++) {
-		proj = projectiles[i];
+		proj = conjurations[i];
 		var enemy = ((proj.caster===P1) ? P2 : P1);
 		proj.x+=proj.rate*proj.heading*modifier;
-		if (proj.isTouching(enemy)) {enemy.health-=proj.damage;removeIndices.push(i);}
-		else if (proj.isOffscreen()) {removeIndices.push(i);}
+		if (proj.isTouching(enemy)) {
+			if (!enemy.isShielded) {enemy.health-=proj.damage}
+			if (proj.onDestroy) {proj.onDestroy();}
+			proj.isCondemned = true;
+		}
+		else if (proj.isOffscreen()) {proj.isCondemned=true;if (proj.onDestroy) {proj.onDestroy();}}
 	}
-	while (removeIndices.length>0) {
-		projectiles.splice(removeIndices[0],1);
-		removeIndices.shift();
-	}
-}
+	conjurations = conjurations.filter(function(x) {return (!x.isCondemned)})
+};
 
 // Reset the game
 var reset = function() {
@@ -200,9 +264,9 @@ var render = function () {
 	//Draw creatures
 	var i=0,L=creatures.length;
 	for (i;i<L;i++) {creatures[i].draw();}
-	//Draw projectiles
-	L=projectiles.length;
-	for (i=0;i<L;i++) {projectiles[i].draw();}
+	//Draw conjurations
+	L=conjurations.length;
+	for (i=0;i<L;i++) {conjurations[i].draw();}
 
 	// Score
 	
@@ -233,8 +297,17 @@ var resolve = function() {
 	P2W.remember(orders.P2);
 	orders.P1 = "";
 	orders.P2 = "";
+	//Upkeep for existing spells
+	var i=0, combined = creatures + conjurations, L = combined.length;
+	conjurations.forEach(function(x,i,arr) {
+		if (x.onUpkeep) {x.onUpkeep()}
+	});
+	for (i;i<L;i++) {
+		console.log(combined[i].tag);
+		if (combined[i].onUpkeep) {combined[i].onUpkeep();}
+	}
+
 	var P1S = P1W.findSpell(),P2S = P2W.findSpell();
-	console.log("P1",P1S,"P2",P2S)
 	if (P1S) {P1S.onCast(P1)}
 	if (P2S) {P2S.onCast(P2)}
 	//console.log(P1.words.history);
