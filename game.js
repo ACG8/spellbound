@@ -13,6 +13,33 @@ bgImage.onload = function () {
 };
 bgImage.src = "images/background.png";
 
+/////////////////////////////////////////////////////////////////////////
+/////////////////////////////Game Settings///////////////////////////////
+/////////////////////////////////////////////////////////////////////////
+
+var roundTime = 5000, //Time of each round in ms
+
+	keybindings = { //Control bindings for players 1 and 2
+	P1: {
+		a: 87, //w
+		b: 69, //e
+		c: 65, //a
+		d: 83, //s
+		e: 68  //d
+	},
+	P2: {
+		a: 79, //o
+		b: 80, //p
+		c: 76, //l
+		d: 186,//;
+		e: 222 //'
+	}
+};
+
+/////////////////////////////////////////////////////////////////////////
+/////////////////////////Constructor Functions///////////////////////////
+/////////////////////////////////////////////////////////////////////////
+
 function Actor(imagesrc,x,y) {
 	this.image = new Image();
 	this.image.src = "images/"+imagesrc+".png";
@@ -20,8 +47,15 @@ function Actor(imagesrc,x,y) {
 	this.y=y;
 	this.draw = function() {ctx.drawImage(this.image,this.x,this.y)};
 	this.isTouching = function(other) {
-		var T = [this.x,this.y,this.image.width,this.image.height],O = [other.x,other.y,other.image.width,other.image.height];
-		return (!notTouching(T,O));
+		var L1=this.x,
+			R1=L1+this.image.width,
+			U1=this.y,
+			D1=U1+this.image.height,
+			L2=other.x,
+			R2=L2+other.image.width,
+			U2=other.y,
+			D2=U2+other.image.height;
+		return (!(L1>R2 || L2>R1 || U1>D2 || U2>D1));
 	};
 	this.isOffscreen = function() {
 		var L=this.x,R=L+this.image.width,U=this.y,D=U+this.image.height;
@@ -29,28 +63,16 @@ function Actor(imagesrc,x,y) {
 	};
 }
 
-function notTouching(rect1,rect2) {//rect1,2 as arrays, format [x,y,w,h]
-	var 
-	L1=rect1[0],
-	R1=L1+rect1[2],
-	U1=rect1[1],
-	D1=U1+rect1[3]
-	L2=rect2[0],
-	R2=L2+rect2[2],
-	U2=rect2[1],
-	D2=U2+rect2[3];
-	return (L1>R2 || L2>R1 || U1>D2 || U2>D1);
-}
-
-function Creature(level,health,speed,imagesrc,x,y) {
+function Creature(level,health,speed,controller,imagesrc,x,y) {
 	Actor.call(this,imagesrc);
 	this.level = level;
 	this.health = health;
 	this.speed = speed;
+	this.controller = controller;
 }
 
 function Wizard(level,health,speed,imagesrc,x,y) {
-	Creature.call(this,level,health,speed,imagesrc,x,y);
+	Creature.call(this,level,health,speed,this,imagesrc,x,y);
 	this.words = new Words();
 }
 
@@ -73,71 +95,56 @@ function Words() {
 		for (i;i<L;i++) {if (matchList[i]["spell"].length>result.length) {result=matchList[i];}}
 		return result;
 	};
-	this.remember = function(c) {this.history.push(c)};
+	this.remember = function(c) {
+		this.history.push(c);
+		while (this.history.length > 20) {this.history.shift();}
+	};
 }
 
-function Projectile(heading,rate,damage,imagesrc,x,y) { //Images should be from P1's perspective
-	Actor.call(this,imagesrc,x,y);
-	this.heading = heading;//-1 for left, 1 for right
+function Projectile(caster,rate,damage,imagesrc) { //Images should be from P1's perspective
+	Actor.call(this,imagesrc,caster.x,caster.y);
+	this.heading = (caster.controller===P1) ? 1 : -1;//heading;//-1 for left, 1 for right
 	this.rate = rate;
 	this.damage = damage;
+	this.caster = caster;
 
 	//if (this.heading===-1) {ctx.scale(scaleH, scaleV)}
 }
 
-function Fireball(heading,x,y) {
-	Projectile.call(this,heading,256,5,"fireball",x,y);
+function Fireball(caster) {
+	Projectile.call(this,caster,256,5,"fireball");
 }
-//Load player images
-/*
-var P1Ready = false;
-var P1Image = new Image();
-P1Image.onload = function() {P1Ready=true;}
+/////////////////////////////////////////////////////////////////////////
+/////////////////////////////////Spells//////////////////////////////////
+/////////////////////////////////////////////////////////////////////////
 
-var P2Ready = false;
-var P2Image = new Image();
-P2Image.onload = function() {P2Ready=true;}
-*/
-var startX1 = canvas.width / 10;
-var startX2 = canvas.width * 8 / 10;
-var startY = canvas.height / 2;
+var spellbook = {
+	fireball: {
+		spell:"a",//aabc; will use simple 1 character for testing
+		onCast: function(caster) {
+			var proj = new Fireball(caster);
+			projectiles.push(proj);
+		}
+	}
+}
 
-var P1 = new Wizard(7,20,4,"wizardRight",startX1,startY);
-var P2 = new Wizard(7,20,4,"wizardLeft",startX2,startY);
+/////////////////////////////////////////////////////////////////////////
+//////////////////////////Variable Definitions///////////////////////////
+/////////////////////////////////////////////////////////////////////////
 
-var creatures = [P1,P2];
-var projectiles = [];
+var startX1 = canvas.width / 10,
+	startX2 = canvas.width * 8 / 10,
+	startY = canvas.height / 2,
+	P1 = new Wizard(7,20,4,"wizardRight",startX1,startY),
+	P2 = new Wizard(7,20,4,"wizardLeft",startX2,startY),
+	creatures = [P1,P2],
+	projectiles = [],
+	keysDown = {},
+	orders = {P1:"",P2:""};
 
-/*
-// Hero image
-var heroReady = false;
-var heroImage = new Image();
-heroImage.onload = function () {
-	heroReady = true;
-};
-heroImage.src = "images/wizardRight.png";
-
-// Monster image
-var monsterReady = false;
-var monsterImage = new Image();
-monsterImage.onload = function () {
-	monsterReady = true;
-};
-monsterImage.src = "images/wizardLeft.png";
-*/
-// Game objects
-/*
-var hero = {
-	speed: 256, // movement in pixels per second
-	image: heroImage
-};
-var monster = {
-	image:monsterImage
-};
-var monstersCaught = 0;
-*/
-// Handle keyboard controls
-var keysDown = {};
+/////////////////////////////////////////////////////////////////////////
+////////////////////////////Controls Handler/////////////////////////////
+/////////////////////////////////////////////////////////////////////////
 
 addEventListener("keydown", function (e) {
 	keysDown[e.keyCode] = true;
@@ -147,63 +154,44 @@ addEventListener("keyup", function (e) {
 	delete keysDown[e.keyCode];
 }, false);
 
-// Reset the game when the player catches a monster
-var reset = function () {
-	P1.x = canvas.width / 10;
-	P1.y = canvas.height / 2;
-
-	// Throw the monster somewhere on the screen randomly
-	P2.x = canvas.width * 8 / 10;
-	P2.y = canvas.height / 2;
-};
+/////////////////////////////////////////////////////////////////////////
+/////////////////////////Game Update Functions///////////////////////////
+/////////////////////////////////////////////////////////////////////////
 
 // Update game objects
 var update = function (modifier) {
-	//console.log(keysDown,projectiles);
-	if (32 in keysDown && projectiles.length===0) {//spacebar
-		var fireball = new Fireball(1,P1.x,P1.y);
-		projectiles.push(fireball);
+	//console.log(keysDown);
+	var P,key,controls;
+	for (P in keybindings) {
+		controls = keybindings[P]
+		for (key in controls) {
+			if (controls[key] in keysDown) {orders[P]=key}
+		}
 	}
-	/*
-	if (38 in keysDown) { // Player holding up
-		hero.y -= hero.speed * modifier;
-	}
-	if (40 in keysDown) { // Player holding down
-		hero.y += hero.speed * modifier;
-	}
-	if (37 in keysDown) { // Player holding left
-		hero.x -= hero.speed * modifier;
-	}
-	if (39 in keysDown) { // Player holding right
-		hero.x += hero.speed * modifier;
-	}
-	*/
-	
+
 	var i=0,L=projectiles.length,proj,removeIndices=[];
-	for (i=0;i<L;i++) {
+	for (i;i<L;i++) {
 		proj = projectiles[i];
-		proj.x+=proj.rate*modifier;
-		if (proj.isTouching(P2)) {P2.health-=proj.damage;removeIndices.push(i);}
+		var enemy = ((proj.caster===P1) ? P2 : P1);
+		proj.x+=proj.rate*proj.heading*modifier;
+		if (proj.isTouching(enemy)) {enemy.health-=proj.damage;removeIndices.push(i);}
 		else if (proj.isOffscreen()) {removeIndices.push(i);}
 	}
 	while (removeIndices.length>0) {
 		projectiles.splice(removeIndices[0],1);
 		removeIndices.shift();
 	}
+}
 
-	// Are they touching?
-	/*
-	if (
-		hero.x <= (monster.x + 32)
-		&& monster.x <= (hero.x + 32)
-		&& hero.y <= (monster.y + 32)
-		&& monster.y <= (hero.y + 32)
-	) {
-		++monstersCaught;
-		reset();
-	}
-	*/
-};
+// Reset the game
+var reset = function() {
+	P1.x = canvas.width / 10;
+	P1.y = canvas.height / 2;
+
+	// Throw the monster somewhere on the screen randomly
+	P2.x = canvas.width * 8 / 10;
+	P2.y = canvas.height / 2;
+}
 
 // Draw everything
 var render = function () {
@@ -227,13 +215,41 @@ var render = function () {
 	ctx.fillText("Life: " + P1.health, 32, 400-32);
 	ctx.textAlign = "right";
 	ctx.fillText("Life: " + P2.health, 600-32, 400-32);
-	
+
+	// Time
+	ctx.fillStyle = "rgb(250, 250, 250)";
+	ctx.font = "24px Helvetica";
+	ctx.textBaseline = "top";
+	ctx.fillStyle = "black";
+	ctx.textAlign = "center";
+	var text = (parseInt((nextResolve-Date.now())/1000)+1).toString()
+	ctx.fillText(text,300,200);
 };
+
+//Resolve player actions between rounds
+var resolve = function() {
+	var P1W = P1.words, P2W = P2.words;
+	P1W.remember(orders.P1);
+	P2W.remember(orders.P2);
+	orders.P1 = "";
+	orders.P2 = "";
+	var P1S = P1W.findSpell(),P2S = P2W.findSpell();
+	console.log("P1",P1S,"P2",P2S)
+	if (P1S) {P1S.onCast(P1)}
+	if (P2S) {P2S.onCast(P2)}
+	//console.log(P1.words.history);
+	//console.log(P2.words.history);
+}
 
 // The main game loop
 var main = function () {
 	var now = Date.now();
 	var delta = now - then;
+
+	if (now>nextResolve) {
+		resolve()
+		nextResolve += roundTime;
+	}
 
 	update(delta / 1000);
 	render();
@@ -244,22 +260,12 @@ var main = function () {
 	requestAnimationFrame(main);
 };
 
-var spellbook = {
-	fireball: {
-		spell:"aabc",
-		onCast: function() {
-			var proj = new Fireball(1,P1.x,P1.y);
-			projectiles.push(proj);
-			render();
-		}
-	}
-}
-
 // Cross-browser support for requestAnimationFrame
 var w = window;
 requestAnimationFrame = w.requestAnimationFrame || w.webkitRequestAnimationFrame || w.msRequestAnimationFrame || w.mozRequestAnimationFrame;
 
 // Let's play this game!
+var nextResolve = Date.now() + roundTime;
 var then = Date.now();
 reset();
 main();
