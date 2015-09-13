@@ -477,6 +477,11 @@ var reset = function() {
 var render = function () {
 	//Draw background
 	if (bgReady) {ctx.drawImage(bgImage, 0, 0);}
+	//Draw the history bar
+	ctx.fillStyle = "black";
+	ctx.fillRect(0,0,canvas.width,45);
+	//Draw the status bar
+	ctx.fillRect(0,canvas.height-100,canvas.width,100);
 	//Draw creatures
 	var i=0,L=creatures.length,subject;
 	for (i;i<L;i++) {	subject=creatures[i];
