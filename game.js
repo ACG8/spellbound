@@ -2,7 +2,7 @@
 var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
 canvas.width = 800;
-canvas.height = 450;
+canvas.height = 600;
 document.body.appendChild(canvas);
 
 // Background image
@@ -213,7 +213,6 @@ function Actor(sprite,pos) {
 }
 
 Actor.prototype = {
-	draw : function() {ctx.drawImage(this.image,this.x,this.y)},
 	isTouching : function(other) {
 		var L1=this.x,
 			R1=L1+this.w,
@@ -223,6 +222,7 @@ Actor.prototype = {
 			R2=L2+other.w,
 			U2=other.y,
 			D2=U2+other.h;
+		//If their boundaries don't NOT overlap, then they must be touching.
 		return (!(L1>R2 || L2>R1 || U1>D2 || U2>D1));
 	},
 	isOffscreen : function() {
@@ -250,6 +250,7 @@ Creature.prototype = new Actor();
 //_____________________________Wizard__________________________________________________________________________________________________________
 
 function Wizard(level,health,speed,sprite,postion) {
+	this.tag = sprite;
 	Creature.call(this,level,health,speed,this,sprite,postion);
 	this.words = new Words();
 }
@@ -257,25 +258,42 @@ function Wizard(level,health,speed,sprite,postion) {
 Wizard.prototype = new Creature();
 
 Wizard.prototype.publishHistory = function() {
+		//create a copy of history so we can modify it
 		var reversedHistory = this.words.history.slice(0);
 		reversedHistory.reverse();
+		//figure out if we are P1 or P2 and adjust orientation and starting location of the history accordingly
+		var player = {player1:"P1",player2:"P2"}[this.tag],
+			orient = (player==="P1" ? 1:-1),
+			start = (player==="P1" ? 0:canvas.width-40) + orient*(8*50);
+		//for each rune in the history, draw the rune at the top of the screen
 		reversedHistory.forEach(function(o,i) {
-			ctx.drawImage(runeBindings["P1"][o],canvas.width/2-100-i*50,0);
+			ctx.drawImage(runeBindings[player][o],start-orient*(100+i*50),0);
 		})
 	};
 
 Wizard.prototype.publishOptions = function() {
-		var options = this.words.anticipate(),key,i=0;
+		//get spells that can be cast this turn
+		var options = this.words.anticipate(),key,i=0,
+		//figure out if we are P1 or P2 and adjust the parameters accordingly
+			player = {player1:"P1",player2:"P2"}[this.tag],
+			orient = (player==="P1" ? 1:-1),
+			tAlign = (player==="P1" ? "left":"right"),
+			start = (player==="P1" ? 0:canvas.width-40),
+			tStart = (player==="P1" ? 50:canvas.width-50);
+		//list out the spells
 		for (key in options) {
-			if (options[key].name) {
-				ctx.drawImage(runeBindings["P1"][key],0,50+i*50)
+			if (options[key].name) {//don't draw the null spell; too trivial
+				//Draw the rune
+				ctx.drawImage(runeBindings[player][key],start,50+i*50)
+				//Draw the text
 				ctx.fillStyle = "rgb(250, 250, 250)";
 				ctx.font = "30px Helvetica";
 				ctx.fillStyle = "black";
 				ctx.textBaseline = "top";
-				ctx.textAlign = "left";
-				ctx.fillText("" + options[key].name, 50, 50+i*50);
-				i++
+				ctx.textAlign = tAlign;
+				ctx.fillText("" + options[key].name, tStart, 50+i*50);
+				//Move down to the next line
+				i++;
 			}
 		}
 	};
@@ -488,6 +506,9 @@ var render = function () {
 
 	P1.publishHistory();
 	P1.publishOptions();
+
+	P2.publishHistory();
+	P2.publishOptions();
 };
 
 //Resolve player actions between rounds
