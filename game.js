@@ -196,6 +196,7 @@ runeUL.src = "images/ULBlock.png";
 runeL.src = "images/LBlock.png";
 runeR.src = "images/RBlock.png";
 runeS.src = "images/SBlock.png";
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////Constructor Functions////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -230,8 +231,17 @@ Actor.prototype = {
 		return (L<0 || canvas.width<R || U<0 || canvas.height<D);
 	},
 	getTouching : function() {
-		var combinedObjects = creatures + conjurations;
-		return combinedObjects.filter(function(o) {return (this.isTouching(o) && (o!==this))})
+		//var combinedObjects = creatures + conjurations;
+		return actors.filter(function(o) {return (this.isTouching(o) && (o!==this))})
+	},
+	onUpdate : function(modifier) {
+		var i=0, uList = this.onUpdateList;
+		if (uList) {
+			L=uList.length
+			for (i;i<L;i++) {
+				this[uList[i]](modifier);
+			}
+		}
 	}
 }
 
@@ -344,7 +354,6 @@ function Conjuration(caster,speed,duration,damage,sprite) { //Images should be f
 	this.damage = damage;
 	this.caster = caster;
 	this.duration = duration;
-
 	//if (this.heading===-1) {ctx.scale(scaleH, scaleV)}
 }
 
@@ -357,10 +366,37 @@ Conjuration.prototype.onUpkeep = function() {
 			return;}
 		if (this.upkeep) {this.upkeep();} 
 	};
+Conjuration.prototype.projectileImpact = function() {
+	var me = this, targets = actors.filter(function(o) {return (o.health && (o.controller !== me.caster) && me.isTouching(o));}), i=0, L=targets.length,t;
+	for (i;i<L;i++) {
+		t = targets[i];
+		if (!t.isShielded) {
+			t.health -= this.damage;
+		}
+		this.isCondemned = true;
+	} //damages all enemies it is touching and selfdestructs afterward
+}
+Conjuration.prototype.move = function (modifier) {
+	this.x += this.speed * this.heading * modifier;
+}
+	/*
+	conjurations.forEach(function(o,i) {
+		enemy = ((o.caster===P1) ? P2 : P1);
+		o.x += o.speed * o.heading * modifier;
+		o.sprite.update(modifier);
+		if (o.isTouching(enemy)) {
+			if (!enemy.isShielded) {enemy.health -= o.damage}
+			if (o.onDestroy) {o.onDestroy();}
+			o.isCondemned = true;
+		}
+		else if (o.isOffscreen()) {o.isCondemned=true; if (o.onDestroy) {o.onDestroy();}}
+	})
+	*/
 //_________________________Fireball___________________________________________________________________________________________________________
 
 function Fireball(caster) {
 	Conjuration.call(this,caster,256,1,5,"fireball");
+	this.onUpdateList = ["move","projectileImpact"];
 }
 
 Fireball.prototype = new Conjuration();
@@ -390,7 +426,7 @@ var spellbook = {
 		spell:"c",//aabc; will use simple 1 character for testing
 		onCast: function(caster) {
 			var conj = new Fireball(caster);
-			conjurations.push(conj);
+			actors.push(conj);
 		}
 	},
 	shield: {
@@ -398,7 +434,7 @@ var spellbook = {
 		spell:"b",
 		onCast: function(caster) {
 			var conj = new Shield(caster);
-			conjurations.push(conj);
+			actors.push(conj);
 		}
 	}
 }
@@ -414,8 +450,9 @@ var startX1 = canvas.width / 10,
 	P1 = new Wizard(7,20,4,"player1",[startX1,startY]),
 	P2 = new Wizard(7,20,4,"player2",[startX2,startY]),
 
-	creatures = [P1,P2],
-	conjurations = [],
+	actors = [P1,P2]
+	//creatures = [P1,P2],
+	//conjurations = [],
 	keysDown = {},
 	orders = {P1:"",P2:""};
 
@@ -447,7 +484,24 @@ var update = function (modifier) {
 		}
 	}
 
-	var enemy;
+	//Update each actor;
+	var i,L,uList;
+	actors.forEach(function(o,i) {
+		//Update sprites
+		o.sprite.update(modifier);
+		//Apply each update function in list
+		o.onUpdate(modifier);
+		/*
+		i=0, uList = o.onUpdateList;
+		if (uList) {
+			L=uList.length
+			for (i;i<L;i++) {
+				uList[i](modifier);
+			}
+		}
+		*/
+	});
+	/*
 	conjurations.forEach(function(o,i) {
 		enemy = ((o.caster===P1) ? P2 : P1);
 		o.x += o.speed * o.heading * modifier;
@@ -459,9 +513,10 @@ var update = function (modifier) {
 		}
 		else if (o.isOffscreen()) {o.isCondemned=true; if (o.onDestroy) {o.onDestroy();}}
 	})
-	
-	conjurations = conjurations.filter(function(x) {return (!x.isCondemned)})
-	creatures = creatures.filter(function(x) {return (!x.isCondemned)})
+	*/
+	actors = actors.filter(function(x) {return (!x.isCondemned)})
+	//conjurations = conjurations.filter(function(x) {return (!x.isCondemned)})
+	//creatures = creatures.filter(function(x) {return (!x.isCondemned)})
 };
 
 // Reset the game
@@ -482,6 +537,11 @@ var render = function () {
 	ctx.fillRect(0,0,canvas.width,45);
 	//Draw the status bar
 	ctx.fillRect(0,canvas.height-100,canvas.width,100);
+	//Draw all actors
+	var i=0,L=actors.length,subject;
+	for (i;i<L;i++) {	subject=actors[i];
+						subject.sprite.render(subject.x,subject.y);}
+	/*
 	//Draw creatures
 	var i=0,L=creatures.length,subject;
 	for (i;i<L;i++) {	subject=creatures[i];
@@ -490,7 +550,7 @@ var render = function () {
 	L=conjurations.length;
 	for (i=0;i<L;i++) {	subject=conjurations[i];
 						subject.sprite.render(subject.x,subject.y);}
-
+	*/
 	// Life
 	ctx.fillStyle = "rgb(250, 250, 250)";
 	ctx.font = "50px Helvetica";
@@ -525,7 +585,7 @@ var resolve = function() {
 	orders.P2 = "";
 
 	//Upkeep for existing spells
-	conjurations.forEach(function(x) {
+	actors.forEach(function(x) {
 		if (x.onUpkeep) {x.onUpkeep()}
 	});
 
