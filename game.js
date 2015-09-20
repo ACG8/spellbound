@@ -81,7 +81,7 @@ bgImage.src = "images/background.png";
     };
 })();
 
-function Sprite(url, pos, size, speed, frames, dir, once) {
+function Sprite(url, pos, size, speed, frames, facing, dir, once) {
     this.pos = pos;
     this.size = size;
     this.speed = typeof speed === 'number' ? speed : 0;
@@ -90,6 +90,7 @@ function Sprite(url, pos, size, speed, frames, dir, once) {
     this.url = url;
     this.dir = dir || 'horizontal';
     this.once = once;
+    this.facing = facing || 1; //-1 = left, 1 = right
 };
 
 Sprite.prototype.update = function(dt) {
@@ -121,6 +122,7 @@ Sprite.prototype.render = function(x,y) {
     else {
         sx += frame * this.size[0];
     }
+    ctx.scale(this.facing,1);
     ctx.drawImage(resources.get(this.url),
                   sx, sy,
                   this.size[0], this.size[1],
@@ -135,7 +137,8 @@ var spriteSpec = {
 	fireball: 	{frames:[0,1,2,3,4,5],		size:[64,64],		rate:20,	pos:[0,0]},
 	shield 	: 	{frames:[0],				size:[111,109],		rate:0,		pos:[0,0]},
 	player1	: 	{frames:[0],				size:[50,64],		rate:0,		pos:[0,0]},
-	player2	: 	{frames:[0],				size:[50,64],		rate:0,		pos:[0,0]}
+	player2	: 	{frames:[0],				size:[50,64],		rate:0,		pos:[0,0]},
+	dragon	: 	{frames:[0],				size:[243,165],		rate:0,		pos:[0,0]},
 }
 
 for (var key in spriteSpec) {resources.load("images/"+key+".png")}
@@ -201,15 +204,20 @@ runeS.src = "images/SBlock.png";
 /////////////////////////Constructor Functions////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //function Sprite(url, pos, size, speed, frames, dir, once)
-function Actor(sprite,pos) {
+function Actor(sprite,pos,owner) {
+	this.owner = owner
 	sprite = sprite || "error"
 	pos = pos || [0,0]
+
 	var s = spriteSpec[sprite];
-	this.x = pos[0];
-	this.y = pos[1];
+
 	this.w = s.size[0];
 	this.h = s.size[1];
-	this.sprite = new Sprite("images/"+sprite+".png", s.pos, s.size, s.rate, s.frames);
+	this.x = pos[0]-this.w/2;
+	this.y = pos[1]-this.h/2;
+
+	var facing = (owner === P1) ? 1:(-1);
+	this.sprite = new Sprite("images/"+sprite+".png", s.pos, s.size, s.rate, s.frames,facing);
 	this.isCondemned = false;
 }
 
@@ -247,21 +255,24 @@ Actor.prototype = {
 
 //_____________________________Creature_________________________________________________________________________________________________________
 
-function Creature(level,health,speed,controller,sprite,position) {
-	Actor.call(this,sprite,position);
+function Creature(level,health,controller,sprite,position) {
+	var facing  = (controller === P1) ? 1:-1;
+	Actor.call(this,sprite,position,facing);
 	this.level = level;
 	this.health = health;
-	this.speed = speed;
 	this.controller = controller;
 }
 
 Creature.prototype = new Actor();
 
+function Dragon(caster) {
+	Creature.call(this,7,30,caster,"dragon",[caster.x,caster.y])
+}
 //_____________________________Wizard__________________________________________________________________________________________________________
 
-function Wizard(level,health,speed,sprite,postion) {
+function Wizard(level,health,sprite,postion) {
 	this.tag = sprite;
-	Creature.call(this,level,health,speed,this,sprite,postion);
+	Creature.call(this,level,health,this,sprite,postion);
 	this.words = new Words();
 }
 
@@ -348,7 +359,8 @@ Words.prototype = {
 function Conjuration(caster,speed,duration,damage,sprite) { //Images should be from P1's perspective
 	this.tag = sprite;
 	caster = caster || {};
-	Actor.call(this,sprite,[caster.x,caster.y]);
+	var facing  = (caster === P1) ? 1:-1;
+	Actor.call(this,sprite,[caster.x,caster.y],facing);
 	this.heading = (caster.controller===P1) ? 1 : -1;//heading;//-1 for left, 1 for right
 	this.speed = speed;
 	this.damage = damage;
@@ -367,7 +379,9 @@ Conjuration.prototype.onUpkeep = function() {
 		if (this.upkeep) {this.upkeep();} 
 	};
 Conjuration.prototype.projectileImpact = function() {
-	var me = this, targets = actors.filter(function(o) {return (o.health && (o.controller !== me.caster) && me.isTouching(o));}), i=0, L=targets.length,t;
+	var me = this,
+		targets = actors.filter(function(o) {return (o.health && (o.controller !== me.caster) && me.isTouching(o));}),
+		i=0, L=targets.length,t;
 	for (i;i<L;i++) {
 		t = targets[i];
 		if (!t.isShielded) {
@@ -379,19 +393,6 @@ Conjuration.prototype.projectileImpact = function() {
 Conjuration.prototype.move = function (modifier) {
 	this.x += this.speed * this.heading * modifier;
 }
-	/*
-	conjurations.forEach(function(o,i) {
-		enemy = ((o.caster===P1) ? P2 : P1);
-		o.x += o.speed * o.heading * modifier;
-		o.sprite.update(modifier);
-		if (o.isTouching(enemy)) {
-			if (!enemy.isShielded) {enemy.health -= o.damage}
-			if (o.onDestroy) {o.onDestroy();}
-			o.isCondemned = true;
-		}
-		else if (o.isOffscreen()) {o.isCondemned=true; if (o.onDestroy) {o.onDestroy();}}
-	})
-	*/
 //_________________________Fireball___________________________________________________________________________________________________________
 
 function Fireball(caster) {
@@ -436,6 +437,14 @@ var spellbook = {
 			var conj = new Shield(caster);
 			actors.push(conj);
 		}
+	},
+	dragonForm: {
+		name: "Dragon Form",
+		spell:"a",
+		onCast: function(caster) {
+			//transformation animation here
+			caster.form = new Dragon(caster);
+		}
 	}
 }
 
@@ -447,12 +456,10 @@ var startX1 = canvas.width / 10,
 	startX2 = canvas.width * 8 / 10,
 	startY = canvas.height / 2,
 
-	P1 = new Wizard(7,20,4,"player1",[startX1,startY]),
-	P2 = new Wizard(7,20,4,"player2",[startX2,startY]),
+	P1 = new Wizard(7,20,"player1",[startX1,startY]),
+	P2 = new Wizard(7,20,"player2",[startX2,startY]),
 
 	actors = [P1,P2]
-	//creatures = [P1,P2],
-	//conjurations = [],
 	keysDown = {},
 	orders = {P1:"",P2:""};
 
@@ -483,7 +490,6 @@ var update = function (modifier) {
 			if (controls[key] in keysDown) {orders[P]=key}
 		}
 	}
-
 	//Update each actor;
 	var i,L,uList;
 	actors.forEach(function(o,i) {
@@ -491,32 +497,9 @@ var update = function (modifier) {
 		o.sprite.update(modifier);
 		//Apply each update function in list
 		o.onUpdate(modifier);
-		/*
-		i=0, uList = o.onUpdateList;
-		if (uList) {
-			L=uList.length
-			for (i;i<L;i++) {
-				uList[i](modifier);
-			}
-		}
-		*/
 	});
-	/*
-	conjurations.forEach(function(o,i) {
-		enemy = ((o.caster===P1) ? P2 : P1);
-		o.x += o.speed * o.heading * modifier;
-		o.sprite.update(modifier);
-		if (o.isTouching(enemy)) {
-			if (!enemy.isShielded) {enemy.health -= o.damage}
-			if (o.onDestroy) {o.onDestroy();}
-			o.isCondemned = true;
-		}
-		else if (o.isOffscreen()) {o.isCondemned=true; if (o.onDestroy) {o.onDestroy();}}
-	})
-	*/
+	//Remove condemned actors
 	actors = actors.filter(function(x) {return (!x.isCondemned)})
-	//conjurations = conjurations.filter(function(x) {return (!x.isCondemned)})
-	//creatures = creatures.filter(function(x) {return (!x.isCondemned)})
 };
 
 // Reset the game
@@ -540,17 +523,8 @@ var render = function () {
 	//Draw all actors
 	var i=0,L=actors.length,subject;
 	for (i;i<L;i++) {	subject=actors[i];
+						subject = subject.form || subject;
 						subject.sprite.render(subject.x,subject.y);}
-	/*
-	//Draw creatures
-	var i=0,L=creatures.length,subject;
-	for (i;i<L;i++) {	subject=creatures[i];
-						subject.sprite.render(subject.x,subject.y);}
-	//Draw conjurations
-	L=conjurations.length;
-	for (i=0;i<L;i++) {	subject=conjurations[i];
-						subject.sprite.render(subject.x,subject.y);}
-	*/
 	// Life
 	ctx.fillStyle = "rgb(250, 250, 250)";
 	ctx.font = "50px Helvetica";
