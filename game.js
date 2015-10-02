@@ -1,8 +1,8 @@
 // Create the canvas
 var canvas = document.createElement("canvas");
 var ctx = canvas.getContext("2d");
-canvas.width = 800;
-canvas.height = 600;
+canvas.width = 256*3;
+canvas.height = 154*3;
 document.body.appendChild(canvas);
 
 // Background image
@@ -81,7 +81,7 @@ bgImage.src = "images/background.png";
     };
 })();
 
-function Sprite(url, pos, size, speed, frames, facing, dir, once) {
+function Sprite(url, pos, size, speed, frames, facing, scale, dir, once) {
     this.pos = pos;
     this.size = size;
     this.speed = typeof speed === 'number' ? speed : 0;
@@ -91,6 +91,7 @@ function Sprite(url, pos, size, speed, frames, facing, dir, once) {
     this.dir = dir || 'horizontal';
     this.once = once;
     this.facing = facing || 1; //-1 = left, 1 = right
+    this.scale = scale;
 };
 
 Sprite.prototype.update = function(dt) {
@@ -127,18 +128,18 @@ Sprite.prototype.render = function(x,y) {
                   sx, sy,
                   this.size[0], this.size[1],
                   x, y,
-                  this.size[0], this.size[1]);
+                  this.size[0]*this.scale, this.size[1]*this.scale);
 };
 
 //End borrowed code
 
 var spriteSpec = {
-	error 	:  	{frames:[0],				size:[50,50],		rate:0,		pos:[0,0]},
-	fireball: 	{frames:[0,1,2,3,4,5],		size:[64,64],		rate:20,	pos:[0,0]},
-	shield 	: 	{frames:[0],				size:[111,109],		rate:0,		pos:[0,0]},
-	player1	: 	{frames:[0],				size:[50,64],		rate:0,		pos:[0,0]},
-	player2	: 	{frames:[0,1],				size:[200,255],		rate:20,	pos:[0,0]},
-	dragon	: 	{frames:[0],				size:[243,165],		rate:0,		pos:[0,0]},
+	error 	:  	{frames:[0],								size:[50,50],		rate:0,		pos:[0,0],		scale:1},
+	fireball: 	{frames:[0,1,2,3,4,5],						size:[64,64],		rate:20,	pos:[0,0],		scale:2},
+	shield 	: 	{frames:[0],								size:[111,109],		rate:0,		pos:[0,0],		scale:1},
+	player1	: 	{frames:[0,1,2,3,4,5,6,7,8,9,10],			size:[53,65],		rate:10,	pos:[0,0],		scale:3},
+	player2	: 	{frames:[0,1,2,3,4,5,6,7,8,9,10],			size:[53,65],		rate:10,	pos:[0,0],		scale:3},
+	dragon	: 	{frames:[0],								size:[243,165],		rate:0,		pos:[0,0],		scale:1},
 }
 
 for (var key in spriteSpec) {resources.load("images/"+key+".png")}
@@ -203,21 +204,21 @@ runeS.src = "images/SBlock.png";
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////Constructor Functions////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//function Sprite(url, pos, size, speed, frames, dir, once)
+//function Sprite(url, pos, size, speed, frames, facing, scale, dir, once)
 function Actor(sprite,pos,owner) {
 	this.owner = owner;
 	sprite = sprite || "error";
 	pos = pos || [0,0];
 
-	var s = spriteSpec[sprite];
+	var s = spriteSpec[sprite], scale=s.scale;
 
-	this.w = s.size[0];
-	this.h = s.size[1];
+	this.w = s.size[0]*scale;
+	this.h = s.size[1]*scale;
 	this.x = pos[0];
 	this.y = pos[1];
 
 	var facing = (owner === P1) ? 1:(-1);
-	this.sprite = new Sprite("images/"+sprite+".png", s.pos, s.size, s.rate, s.frames,facing);
+	this.sprite = new Sprite("images/"+sprite+".png", s.pos, s.size, s.rate, s.frames, facing, scale);
 	this.isCondemned = false;
 }
 
@@ -252,9 +253,9 @@ Actor.prototype = {
 		}
 	},
 	centerOn : function(x0,y0) {
-		var size = this.sprite.size, w = size[0], h = size[1];
-		this.x = x0-w/2;
-		this.y = y0-h/2;
+		//var size = this.sprite.size;//, w = size[0], h = size[1];
+		this.x = x0-this.w/2;
+		this.y = y0-this.h/2;
 	}
 }
 
@@ -314,8 +315,8 @@ Wizard.prototype.publishOptions = function() {
 				ctx.drawImage(runeBindings[player][key],start,50+i*50)
 				//Draw the text
 				ctx.fillStyle = "rgb(250, 250, 250)";
-				ctx.font = "30px Helvetica";
-				ctx.fillStyle = "black";
+				ctx.font = "30px Papyrus";
+				ctx.fillStyle = "orange";
 				ctx.textBaseline = "top";
 				ctx.textAlign = tAlign;
 				ctx.fillText("" + options[key].name, tStart, 50+i*50);
@@ -404,6 +405,7 @@ Conjuration.prototype.move = function (modifier) {
 function Fireball(caster) {
 	Conjuration.call(this,caster,256,1,5,"fireball");
 	this.onUpdateList = ["move","projectileImpact"];
+	this.y += 50;//temporary; need better solution
 }
 
 Fireball.prototype = new Conjuration();
@@ -458,9 +460,9 @@ var spellbook = {
 //////////////////////////Variable Definitions////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //Wizard(level,health,speed,sprite,postion)
-var startX1 = canvas.width / 10,
+var startX1 = canvas.width * 2 / 10,
 	startX2 = canvas.width * 8 / 10,
-	startY = canvas.height / 2,
+	startY = canvas.height * 9 / 16,
 
 	P1 = new Wizard(7,20,"player1",[startX1,startY]),
 	P2 = new Wizard(7,20,"player2",[startX2,startY]),
@@ -515,12 +517,13 @@ var update = function (modifier) {
 // Draw everything
 var render = function () {
 	//Draw background
-	if (bgReady) {ctx.drawImage(bgImage, 0, 0);}
+	var scale = 3
+	if (bgReady) {ctx.drawImage(bgImage, 0, 0, 256, 154, 0, 0, 256*scale, 154*scale);}
 	//Draw the history bar
-	ctx.fillStyle = "black";
-	ctx.fillRect(0,0,canvas.width,45);
+	//ctx.fillStyle = "black";
+	//ctx.fillRect(0,0,canvas.width,45);
 	//Draw the status bar
-	ctx.fillRect(0,canvas.height-100,canvas.width,100);
+	//ctx.fillRect(0,canvas.height-100,canvas.width,100);
 	//Draw all actors
 	var i=0,L=actors.length,subject;
 	for (i;i<L;i++) {
@@ -530,21 +533,23 @@ var render = function () {
 	}
 	// Life
 	ctx.fillStyle = "rgb(250, 250, 250)";
-	ctx.font = "50px Helvetica";
+	ctx.font = "50px Papyrus";
 	ctx.fillStyle = "green";
 	ctx.textBaseline = "bottom";
 
+	var xOffset = 165, yOffset = 15;
+
 	ctx.textAlign = "left";
-	ctx.fillText("Life: " + P1.health, 32, canvas.height-32);
+	ctx.fillText(P1.health, xOffset, canvas.height-yOffset);
 	ctx.textAlign = "right";
-	ctx.fillText("Life: " + P2.health, canvas.width-32, canvas.height-32);
+	ctx.fillText(P2.health, canvas.width-xOffset, canvas.height-yOffset);
 
 	// Time
-	ctx.font = "60px Helvetica";
-	ctx.fillStyle = "black";
+	ctx.font = "60px Papyrus";
+	ctx.fillStyle = "orange";
 	ctx.textAlign = "center";
 	var text = (parseInt((nextResolve-Date.now())/1000)+1).toString();
-	ctx.fillText(text,canvas.width/2,canvas.height/2);
+	ctx.fillText(text,canvas.width/2,canvas.height-yOffset+5);
 
 	P1.publishHistory();
 	P1.publishOptions();
