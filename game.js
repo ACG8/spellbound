@@ -122,7 +122,7 @@ Sprite.prototype.render = function(x,y) {
     else {
         sx += frame * this.size[0];
     }
-    ctx.scale(this.facing,1);
+    //ctx.scale(this.facing,1); //doesn't work, program is trying to scale everything. Need to find a different way.
     ctx.drawImage(resources.get(this.url),
                   sx, sy,
                   this.size[0], this.size[1],
@@ -137,7 +137,7 @@ var spriteSpec = {
 	fireball: 	{frames:[0,1,2,3,4,5],		size:[64,64],		rate:20,	pos:[0,0]},
 	shield 	: 	{frames:[0],				size:[111,109],		rate:0,		pos:[0,0]},
 	player1	: 	{frames:[0],				size:[50,64],		rate:0,		pos:[0,0]},
-	player2	: 	{frames:[0],				size:[50,64],		rate:0,		pos:[0,0]},
+	player2	: 	{frames:[0,1],				size:[200,255],		rate:20,	pos:[0,0]},
 	dragon	: 	{frames:[0],				size:[243,165],		rate:0,		pos:[0,0]},
 }
 
@@ -205,16 +205,16 @@ runeS.src = "images/SBlock.png";
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //function Sprite(url, pos, size, speed, frames, dir, once)
 function Actor(sprite,pos,owner) {
-	this.owner = owner
-	sprite = sprite || "error"
-	pos = pos || [0,0]
+	this.owner = owner;
+	sprite = sprite || "error";
+	pos = pos || [0,0];
 
 	var s = spriteSpec[sprite];
 
 	this.w = s.size[0];
 	this.h = s.size[1];
-	this.x = pos[0]-this.w/2;
-	this.y = pos[1]-this.h/2;
+	this.x = pos[0];
+	this.y = pos[1];
 
 	var facing = (owner === P1) ? 1:(-1);
 	this.sprite = new Sprite("images/"+sprite+".png", s.pos, s.size, s.rate, s.frames,facing);
@@ -250,6 +250,11 @@ Actor.prototype = {
 				this[uList[i]](modifier);
 			}
 		}
+	},
+	centerOn : function(x0,y0) {
+		var size = this.sprite.size, w = size[0], h = size[1];
+		this.x = x0-w/2;
+		this.y = y0-h/2;
 	}
 }
 
@@ -267,6 +272,7 @@ Creature.prototype = new Actor();
 
 function Dragon(caster) {
 	Creature.call(this,7,30,caster,"dragon",[caster.x,caster.y])
+	
 }
 //_____________________________Wizard__________________________________________________________________________________________________________
 
@@ -459,9 +465,13 @@ var startX1 = canvas.width / 10,
 	P1 = new Wizard(7,20,"player1",[startX1,startY]),
 	P2 = new Wizard(7,20,"player2",[startX2,startY]),
 
-	actors = [P1,P2]
+	actors = [P1,P2],
+
 	keysDown = {},
 	orders = {P1:"",P2:""};
+
+P1.centerOn(startX1,startY);
+P2.centerOn(startX2,startY);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////Controls Handler//////////////////////////////////////////////////////////////////////////////////////////////////
@@ -502,15 +512,6 @@ var update = function (modifier) {
 	actors = actors.filter(function(x) {return (!x.isCondemned)})
 };
 
-// Reset the game
-var reset = function() {
-	P1.x = canvas.width / 10;
-	P1.y = canvas.height / 2;
-
-	P2.x = canvas.width * 8 / 10;
-	P2.y = canvas.height / 2;
-}
-
 // Draw everything
 var render = function () {
 	//Draw background
@@ -522,9 +523,11 @@ var render = function () {
 	ctx.fillRect(0,canvas.height-100,canvas.width,100);
 	//Draw all actors
 	var i=0,L=actors.length,subject;
-	for (i;i<L;i++) {	subject=actors[i];
-						subject = subject.form || subject;
-						subject.sprite.render(subject.x,subject.y);}
+	for (i;i<L;i++) {
+		subject=actors[i];
+		subject = subject.form || subject;
+		subject.sprite.render(subject.x,subject.y);
+	}
 	// Life
 	ctx.fillStyle = "rgb(250, 250, 250)";
 	ctx.font = "50px Helvetica";
@@ -591,14 +594,14 @@ var main = function () {
 };
 
 // Cross-browser support for requestAnimationFrame
-var w = window;
+var w = window,
+	nextResolve = Date.now() + roundTime,
+	then = Date.now();
 requestAnimationFrame = w.requestAnimationFrame || w.webkitRequestAnimationFrame || w.msRequestAnimationFrame || w.mozRequestAnimationFrame;
 
-// Let's play this game!
-var nextResolve = Date.now() + roundTime;
-var then = Date.now();
-reset();
-
+// Start game
 resources.onReady(main);
 
-//main();
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////Utility Functions////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
